@@ -57,7 +57,9 @@ const (
 	mqttPacketMask       = byte(0xf0)
 	mqttPacketFlagMask   = byte(0x0f)
 
-	mqttProtoLevel = byte(0x4)
+	mqttProtoLevel31  = byte(0x3)  // MQTT 3.1
+	mqttProtoLevel311 = byte(0x4)  // MQTT 3.1.1
+	mqttProtoLevel50  = byte(0x5)  // MQTT 5.0
 
 	// Connect flags
 	mqttConnFlagReserved     = byte(0x1)
@@ -234,6 +236,7 @@ var (
 	errMQTTConnFlagReserved           = errors.New("connect flags reserved bit not set to 0")
 	errMQTTWillAndRetainFlag          = errors.New("if Will flag is set to 0, Will Retain flag must be 0 too")
 	errMQTTPasswordFlagAndNoUser      = errors.New("password flag set but username flag is not")
+	errMQTT31CIDEmptyNotAllowed       = errors.New("empty client ID not allowed in MQTT 3.1")
 	errMQTTCIDEmptyNeedsCleanFlag     = errors.New("when client ID is empty, clean session flag must be set to 1")
 	errMQTTEmptyWillTopic             = errors.New("empty Will topic not allowed")
 	errMQTTEmptyUsername              = errors.New("empty user name not allowed")
@@ -397,6 +400,9 @@ type mqtt struct {
 	asm  *mqttAccountSessionManager // quick reference to account session manager, immutable after processConnect()
 	sess *mqttSession               // quick reference to session, immutable after processConnect()
 	cid  string                     // client ID
+
+	// Client protocol level (version). To know which features are supported.
+	protoLevel byte
 
 	// rejectQoS2Pub tells the MQTT client to not accept QoS2 PUBLISH, instead
 	// error and terminate the connection.
@@ -3611,12 +3617,14 @@ func (c *client) mqttParseConnect(r *mqttReader, hasMappings bool) (byte, *mqttC
 	}
 
 	// Spec [MQTT-3.1.2-1]
-	if !bytes.Equal(proto, mqttProtoName) {
-		// Check proto name against v3.1 to report better error
-		if bytes.Equal(proto, mqttOldProtoName) {
-			return 0, nil, fmt.Errorf("older protocol %q not supported", proto)
-		}
-		return 0, nil, fmt.Errorf("expected connect packet with protocol name %q, got %q", mqttProtoName, proto)
+	var oldHeader bool
+	switch {
+	case bytes.Equal(proto, mqttOldProtoName):
+		oldHeader = true
+	case bytes.Equal(proto, mqttProtoName):
+		oldHeader = false
+	default:
+		return 0, nil, fmt.Errorf("connect packet: unexpected protocol name %q", proto)
 	}
 
 	// Protocol level
@@ -3625,9 +3633,13 @@ func (c *client) mqttParseConnect(r *mqttReader, hasMappings bool) (byte, *mqttC
 		return 0, nil, err
 	}
 	// Spec [MQTT-3.1.2-2]
-	if level != mqttProtoLevel {
+	switch {
+	case  oldHeader && level == mqttProtoLevel31:
+	case !oldHeader && level == mqttProtoLevel311:
+	default:
 		return mqttConnAckRCUnacceptableProtocolVersion, nil, fmt.Errorf("unacceptable protocol version of %v", level)
 	}
+	c.mqtt.protoLevel = level
 
 	cp := &mqttConnectProto{}
 	// Connect flags
@@ -3698,6 +3710,10 @@ func (c *client) mqttParseConnect(r *mqttReader, hasMappings bool) (byte, *mqttC
 	if c.mqtt.cid == _EMPTY_ {
 		if cp.flags&mqttConnFlagCleanSession == 0 {
 			return mqttConnAckRCIdentifierRejected, nil, errMQTTCIDEmptyNeedsCleanFlag
+		}
+		// For MQTT 3.1, reject empty client ID: not allowed
+		if level == mqttProtoLevel31 {
+			return mqttConnAckRCIdentifierRejected, nil, errMQTT31CIDEmptyNotAllowed
 		}
 		// Spec [MQTT-3.1.3-6]
 		c.mqtt.cid = nuid.Next()
@@ -4013,6 +4029,12 @@ CHECK:
 }
 
 func (c *client) mqttEnqueueConnAck(rc byte, sessionPresent bool) {
+	// MQTT 3.1: mqttConnAckRCNotAuthorized (0x05) fall back: old clients don't support this code
+	if c.mqtt.protoLevel == mqttProtoLevel31 && rc == mqttConnAckRCNotAuthorized {
+		// Downgrade to something that makes sense
+		rc = mqttConnAckRCBadUserOrPassword
+	}
+
 	proto := [4]byte{mqttPacketConnectAck, 2, 0, rc}
 	c.mu.Lock()
 	// Spec [MQTT-3.2.2-4]. If return code is different from 0, then

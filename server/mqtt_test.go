@@ -1659,6 +1659,9 @@ func TestMQTTSecondConnect(t *testing.T) {
 }
 
 func TestMQTTParseConnect(t *testing.T) {
+	// Test with this level only
+	mqttProtoLevel := mqttProtoLevel311
+
 	for _, test := range []struct {
 		name    string
 		proto   []byte
@@ -1668,8 +1671,10 @@ func TestMQTTParseConnect(t *testing.T) {
 		{"packet in buffer error", []byte{0}, io.ErrUnexpectedEOF.Error(), false},
 		{"bad proto name", []byte{0, 4, 'B', 'A', 'D'}, "protocol name", false},
 		{"invalid proto name", []byte{0, 3, 'B', 'A', 'D'}, "expected connect packet with protocol name", false},
-		{"old proto not supported", []byte{0, 6, 'M', 'Q', 'I', 's', 'd', 'p'}, "older protocol", false},
+		// {"old proto not supported", []byte{0, 6, 'M', 'Q', 'I', 's', 'd', 'p'}, "older protocol", false},
 		{"error on protocol level", []byte{0, 4, 'M', 'Q', 'T', 'T'}, "protocol level", false},
+		{"unacceptable protocol version", []byte{0, 4, 'M', 'Q', 'T', 'T', 3}, "unacceptable protocol version", false},
+		{"unacceptable protocol version", []byte{0, 4, 'M', 'Q', 'T', 'T', 5}, "unacceptable protocol version", false},
 		{"unacceptable protocol version", []byte{0, 4, 'M', 'Q', 'T', 'T', 10}, "unacceptable protocol version", false},
 		{"error on flags", []byte{0, 4, 'M', 'Q', 'T', 'T', mqttProtoLevel}, "flags", false},
 		{"reserved flag", []byte{0, 4, 'M', 'Q', 'T', 'T', mqttProtoLevel, 1}, errMQTTConnFlagReserved.Error(), false},
