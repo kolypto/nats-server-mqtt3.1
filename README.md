@@ -14,12 +14,19 @@ uses 3.1, unless explicitly switched to 3.1.1 with `AT+QMTCFG="version",0,4`.
 
 Use this patch if you want to use NATS with old 3.1 devices.
 
+# QoS 2 downgrade to QoS 1
+
+This branch contains an additional patch that downgrades QoS 2 subscriptions to QoS 1.
+
+This simulates RabbitMQ behavior that [downgrades QoS 2 subscriptions to QoS 1](https://www.rabbitmq.com/docs/mqtt#qos-2).
+
+
 
 ## Build Me
 
 ```console
-$ docker build . -t 'kolypto/nats-server-mqtt31:2.12.0-alpine' -f docker/Dockerfile
-$ docker push kolypto/nats-server-mqtt31:2.12.0-alpine
+$ docker build . -t 'kolypto/nats-server-mqtt31-qos1:2.12.0-alpine' -f docker/Dockerfile
+$ docker push kolypto/nats-server-mqtt31-qos1:2.12.0-alpine
 ```
 
 
@@ -55,6 +62,9 @@ $ go run main.go -c mqtt.conf
 Use Mosquitto CLI:
 
 ```console
-$ mosquitto_sub -v -h localhost -p 1883 -u "user" -P "pass" -t "device/123/to" -V mqttv31
-$ mosquitto_pub -h localhost -p 1883 -u "user" -P "pass" -t "device/123/to" -m 'hoy' -V mqttv31
+$ mosquitto_sub -v -h localhost -p 1883 -u "user" -P "pass" -t "device/123/to" -V mqttv31 -q 2
+(it won't print QoS from SUBACK)
+but strace will show:
+read(5, "\0\1\1", 3) = 3
+$ mosquitto_pub -h localhost -p 1883 -u "user" -P "pass" -t "device/123/to" -m 'hoy' -V mqttv31 -q 2
 ```
