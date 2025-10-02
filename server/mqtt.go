@@ -4896,6 +4896,12 @@ func (c *client) mqttParseSubsOrUnsubs(r *mqttReader, b byte, pl int, sub bool) 
 			if qos > 2 {
 				return 0, nil, fmt.Errorf("subscribe QoS value must be 0, 1 or 2, got %v", qos)
 			}
+
+			// PATCH. Downgrade QoS 2 to QoS 1.
+			// This is how it works: the client requests QoS 2, but the server responds with SUBACK qos=1.
+			if qos == 2 {
+				qos = 1
+			}
 		}
 		f := &mqttFilter{ttopic: topic, filter: string(filter), qos: qos}
 		filters = append(filters, f)
