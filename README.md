@@ -22,17 +22,29 @@ This simulates RabbitMQ behavior that [downgrades QoS 2 subscriptions to QoS 1](
 
 
 
-## Build Me
+# Updates
+
+## Update me to a NATS release
 
 ```console
-$ docker build . -t 'kolypto/nats-server-mqtt31-qos1:2.12.0-alpine' -f docker/Dockerfile
-$ docker push kolypto/nats-server-mqtt31-qos1:2.12.0-alpine
+$ git remote add upstream git@github.com:nats-io/nats-server.git 
+$ git rebase upstream/release/v2.14.2
+$ git checkout -b patch/v2.14.2/mqtt31-qos1
+$ docker login
+$ docker build . -t 'kolypto/nats-server-mqtt31-qos1:2.14.2-alpine' -f docker/Dockerfile
+$ docker push kolypto/nats-server-mqtt31-qos1:2.14.2-alpine
+```
+
+## Unit-tests
+
+```console
+$ go test ./...
 ```
 
 
 ## Test me with MQTT 3.1 Client
 
-Prepare config:
+Prepare config as `mqtt.conf`:
 
 ```
 listen: 127.0.0.1:4222
